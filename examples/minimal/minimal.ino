@@ -15,12 +15,10 @@ void setup() {
 void loop() {
   wake_state_t st = wake_get_state();
 
-  if (wake_is_ready()) {
-    Serial.println("sending remote wakeup");
-    bool ok = wake_trigger();
-    Serial.printf("wake_trigger -> %d\n", ok ? 1 : 0);
-    delay(1000);
-  }
+  Serial.println("sending wake trigger");
+  bool ok = wake_trigger();
+  Serial.printf("wake_trigger -> %d\n", ok ? 1 : 0);
+  delay(1000);
 
   Serial.printf("mounted=%d suspended=%d remote_wakeup_allowed=%d\n",
                 st.mounted ? 1 : 0,
