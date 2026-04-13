@@ -9,6 +9,10 @@
 
 static const char *TAG = "wake_core";
 
+static esp_err_t ble_init_internal(void);
+static bool ble_connected;
+static bool ble_hid_send_wake_signal(void);
+
 static volatile bool s_usb_suspended = false;
 static volatile bool s_remote_wakeup_allowed = false;
 
@@ -53,45 +57,45 @@ static esp_err_t usb_init_internal(void)
 
 esp_err_t wake_init(void)
 {
+#if USE_USB
     esp_err_t err = usb_init_internal();
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "TinyUSB ready");
     }
     return err;
-}
-
-wake_state_t wake_get_state(void)
-{
-    wake_state_t st = {
-        .mounted = tud_mounted(),
-        .suspended = s_usb_suspended,
-        .remote_wakeup_allowed = s_remote_wakeup_allowed,
-    };
-    return st;
-}
-
-bool wake_is_ready(void)
-{
-    wake_state_t st = wake_get_state();
-    return st.mounted && st.suspended && st.remote_wakeup_allowed;
+#elif USE_BLE
+    return ble_init_internal();
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
 }
 
 bool wake_trigger(void)
 {
-    ESP_LOGI(TAG,
-             "wake request: mounted=%d suspended=%d remote_wakeup_allowed=%d",
-             tud_mounted(),
-             s_usb_suspended,
-             s_remote_wakeup_allowed);
-
-    if (!wake_is_ready()) {
-        ESP_LOGW(TAG, "remote wakeup not allowed now");
+    #if USE_USB
+        return wake_trigger_usb();
+    #elif USE_BLE
+        return wake_trigger_ble();
+    #else
         return false;
-    }
+    #endif
+}
 
+bool wake_trigger_usb(void)
+{
     bool ok = tud_remote_wakeup();
     ESP_LOGI(TAG, "tud_remote_wakeup() -> %d", ok);
     return ok;
+}
+
+bool wake_trigger_ble(void)
+{
+    if (!ble_connected) {
+        ESP_LOGW(TAG, "BLE not connected");
+        return false;
+    }
+
+    return ble_hid_send_wake_signal();
 }
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
