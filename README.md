@@ -2,6 +2,12 @@
 
 Minimal USB remote wake core for ESP32 TinyUSB device mode.
 
+do this
+```zsh
+cd ~/Documents/Arduino/libraries
+git clone https://github.com/9mada4/esp32-wakeup-sleep.git 
+```
+
 ## Public API
 
 - `esp_err_t wake_init(void);`
