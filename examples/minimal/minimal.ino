@@ -1,12 +1,4 @@
-#if __has_include(<wake_core.h>)
 #include <wake_core.h>
-#elif __has_include("wake_core.h")
-#include "wake_core.h"
-#elif __has_include("../../src/wake_core.h")
-#include "../../src/wake_core.h"
-#else
-#error "wake_core.h not found. Install this repo as an Arduino library."
-#endif
 
 void setup() {
   Serial.begin(115200);
