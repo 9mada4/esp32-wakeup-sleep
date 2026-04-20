@@ -6,16 +6,12 @@
 
 static const char *TAG = "wake_core";
 
-#if defined(ARDUINO) && defined(CONFIG_IDF_TARGET_ESP32S3)
-#error "ESP32-S3 Arduino builds must link precompiled src/esp32s3/libwakecore.a (run ./tools/build_idf_archive.sh esp32s3)."
-#endif
-
 #if USE_USB
 #if defined(ARDUINO)
-#if __has_include("esp32-hal-tinyusb.h") && __has_include("tusb.h")
-#define WAKE_USB_BACKEND_ARDUINO 1
-#elif __has_include("tinyusb.h") && __has_include("tinyusb_default_config.h")
+#if __has_include("tinyusb.h") && __has_include("tinyusb_default_config.h")
 #define WAKE_USB_BACKEND_IDF 1
+#elif __has_include("esp32-hal-tinyusb.h") && __has_include("tusb.h")
+#define WAKE_USB_BACKEND_ARDUINO 1
 #else
 #define WAKE_USB_BACKEND_NONE 1
 #endif
@@ -90,12 +86,12 @@ static esp_err_t usb_init_internal(void)
     tusb_cfg.descriptor.high_speed_config = config_descriptor;
 #endif
     esp_err_t err = tinyusb_driver_install(&tusb_cfg);
-    if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
+    if (err == ESP_OK) {
         s_usb_initialized = true;
-        if (err == ESP_ERR_INVALID_STATE) {
-            ESP_LOGW(TAG, "TinyUSB already initialized by another owner; reusing existing stack");
-        }
         return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "TinyUSB already initialized by another owner; refusing reuse to avoid descriptor mismatch");
     }
     return err;
 }
@@ -163,6 +159,13 @@ static esp_err_t usb_init_internal(void)
         return ESP_OK;
     }
 
+    /* In Arduino builds, USB classes are typically enabled before USB.begin(). */
+    if (tud_inited()) {
+        s_usb_initialized = true;
+        ESP_LOGI(TAG, "TinyUSB already started by Arduino USB stack; attaching wake hooks only");
+        return ESP_OK;
+    }
+
     tinyusb_device_config_t cfg = {
         .vid = USB_ESPRESSIF_VID,
         .pid = 0x0002,
@@ -181,8 +184,13 @@ static esp_err_t usb_init_internal(void)
     };
 
     esp_err_t err = tinyusb_init(&cfg);
-    if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
+    if (err == ESP_OK) {
         s_usb_initialized = true;
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_STATE) {
+        s_usb_initialized = true;
+        ESP_LOGW(TAG, "TinyUSB already initialized by another owner; reusing active stack");
         return ESP_OK;
     }
     return err;
@@ -327,6 +335,13 @@ uint32_t wake_usb_get_suspend_seq(void)
 esp_err_t wake_init(void)
 {
 #if USE_USB
+#if WAKE_USB_BACKEND_IDF
+    ESP_LOGI(TAG, "wake_init backend=idf");
+#elif WAKE_USB_BACKEND_ARDUINO
+    ESP_LOGI(TAG, "wake_init backend=arduino");
+#else
+    ESP_LOGI(TAG, "wake_init backend=none");
+#endif
     esp_err_t err = usb_init_internal();
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "TinyUSB ready");

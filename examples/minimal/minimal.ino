@@ -1,6 +1,26 @@
 #include <wake_core.h>
 #include <Preferences.h>
 #include <string.h>
+#if defined(ARDUINO_ARCH_ESP32)
+#include <USB.h>
+#include <USBHIDMouse.h>
+#define WAKE_HAS_ARDUINO_USB_HID 1
+#else
+#define WAKE_HAS_ARDUINO_USB_HID 0
+#endif
+#if __has_include("tusb.h")
+#include "tusb.h"
+#endif
+
+#if defined(ARDUINO_ARCH_ESP32)
+#define WAKE_LOG_SERIAL Serial0
+#else
+#define WAKE_LOG_SERIAL Serial
+#endif
+
+#if WAKE_HAS_ARDUINO_USB_HID
+static USBHIDMouse sUsbMouse;
+#endif
 
 static const int kBootButtonPin = 0;  // ESP32-S3 BOOT button (active low)
 static bool s_lastBootLevel = true;
@@ -69,21 +89,21 @@ static void printWakeLog(const char* prefix) {
   wake_state_t st = wake_get_state();
   uint32_t suspendSeqNow = wake_usb_get_suspend_seq();
 
-  Serial.printf("[%s] boot_press=%lu wake_ok=%lu wake_fail=%lu last_result=%d last_press_suspend_seq=%lu\n",
-                prefix ? prefix : "status",
-                (unsigned long)sLog.bootPressCount,
-                (unsigned long)sLog.wakeSuccessCount,
-                (unsigned long)sLog.wakeFailCount,
-                (int)sLog.lastWakeResult,
-                (unsigned long)sLog.suspendSeqAtLastPress);
-  Serial.printf("[%s] suspend_events=%lu resume_events=%lu suspend_seq_now=%lu mounted=%d suspended=%d remote_wakeup_allowed=%d\n",
-                prefix ? prefix : "status",
-                (unsigned long)sLog.suspendEventCount,
-                (unsigned long)sLog.resumeEventCount,
-                (unsigned long)suspendSeqNow,
-                st.mounted ? 1 : 0,
-                st.suspended ? 1 : 0,
-                st.remote_wakeup_allowed ? 1 : 0);
+  WAKE_LOG_SERIAL.printf("[%s] boot_press=%lu wake_ok=%lu wake_fail=%lu last_result=%d last_press_suspend_seq=%lu\n",
+                         prefix ? prefix : "status",
+                         (unsigned long)sLog.bootPressCount,
+                         (unsigned long)sLog.wakeSuccessCount,
+                         (unsigned long)sLog.wakeFailCount,
+                         (int)sLog.lastWakeResult,
+                         (unsigned long)sLog.suspendSeqAtLastPress);
+  WAKE_LOG_SERIAL.printf("[%s] suspend_events=%lu resume_events=%lu suspend_seq_now=%lu mounted=%d suspended=%d remote_wakeup_allowed=%d\n",
+                         prefix ? prefix : "status",
+                         (unsigned long)sLog.suspendEventCount,
+                         (unsigned long)sLog.resumeEventCount,
+                         (unsigned long)suspendSeqNow,
+                         st.mounted ? 1 : 0,
+                         st.suspended ? 1 : 0,
+                         st.remote_wakeup_allowed ? 1 : 0);
 }
 
 static void handleSerialCommand(const char* line) {
@@ -94,13 +114,13 @@ static void handleSerialCommand(const char* line) {
 
   if (strcmp(line, "clear") == 0) {
     clearWakeLog();
-    Serial.println("[status] wake log cleared");
+    WAKE_LOG_SERIAL.println("[status] wake log cleared");
     printWakeLog("status");
     return;
   }
 
   if (strcmp(line, "help") == 0) {
-    Serial.println("commands: status | clear | help");
+    WAKE_LOG_SERIAL.println("commands: status | clear | help");
     printWakeLog("status");
     return;
   }
@@ -110,8 +130,8 @@ static void handleSerialCommand(const char* line) {
 }
 
 static void pollSerialCommands() {
-  while (Serial.available() > 0) {
-    int v = Serial.read();
+  while (WAKE_LOG_SERIAL.available() > 0) {
+    int v = WAKE_LOG_SERIAL.read();
     if (v < 0) {
       break;
     }
@@ -141,18 +161,40 @@ static void pollSerialCommands() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  WAKE_LOG_SERIAL.begin(115200);
   delay(200);
+  WAKE_LOG_SERIAL.println("wake minimal build tag: 2026-04-21-hid-seq-a");
+  WAKE_LOG_SERIAL.printf("WAKE_HAS_ARDUINO_USB_HID=%d\n", WAKE_HAS_ARDUINO_USB_HID ? 1 : 0);
+#if defined(ARDUINO_USB_MODE)
+  WAKE_LOG_SERIAL.printf("ARDUINO_USB_MODE=%d\n", ARDUINO_USB_MODE);
+#endif
+#if defined(CONFIG_TINYUSB_ENABLED)
+  WAKE_LOG_SERIAL.printf("CONFIG_TINYUSB_ENABLED=%d\n", CONFIG_TINYUSB_ENABLED ? 1 : 0);
+#endif
+#if defined(CONFIG_TINYUSB_HID_ENABLED)
+  WAKE_LOG_SERIAL.printf("CONFIG_TINYUSB_HID_ENABLED=%d\n", CONFIG_TINYUSB_HID_ENABLED ? 1 : 0);
+#endif
+
+#if WAKE_HAS_ARDUINO_USB_HID
+  sUsbMouse.begin();
+#if defined(TUSB_DESC_CONFIG_ATT_SELF_POWERED) && defined(TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP)
+  USB.usbAttributes((uint8_t)(TUSB_DESC_CONFIG_ATT_SELF_POWERED | TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP));
+#endif
+  USB.begin();
+  WAKE_LOG_SERIAL.println("arduino USB HID begin done");
+#else
+  WAKE_LOG_SERIAL.println("arduino USB HID begin skipped");
+#endif
 
   esp_err_t err = wake_init();
   if (err != ESP_OK) {
-    Serial.printf("wake_init failed: %d\n", (int)err);
+    WAKE_LOG_SERIAL.printf("wake_init failed: %d\n", (int)err);
     return;
   }
 
   sPrefsReady = sPrefs.begin("wakecore_log", false);
   if (!sPrefsReady) {
-    Serial.println("warning: failed to open NVS log namespace");
+    WAKE_LOG_SERIAL.println("warning: failed to open NVS log namespace");
   } else {
     loadWakeLog();
   }
@@ -162,10 +204,10 @@ void setup() {
   s_lastPrintedSuspendSeq = wake_usb_get_suspend_seq();
   s_prevSuspended = wake_get_state().suspended;
 
-  Serial.println("wake core ready");
-  Serial.println("press BOOT button to send wake trigger");
-  Serial.println("type anything in Serial Monitor to show persisted wake log");
-  Serial.println("commands: status | clear | help");
+  WAKE_LOG_SERIAL.println("wake core ready");
+  WAKE_LOG_SERIAL.println("press BOOT button to send wake trigger");
+  WAKE_LOG_SERIAL.println("type anything in Serial Monitor to show persisted wake log");
+  WAKE_LOG_SERIAL.println("commands: status | clear | help");
   printWakeLog("boot");
 }
 
@@ -192,9 +234,9 @@ void loop() {
   if (bootPressed && s_lastBootLevel) {
     delay(20);  // debounce
     if (digitalRead(kBootButtonPin) == LOW) {
-      Serial.println("BOOT pressed -> sending wake trigger");
+      WAKE_LOG_SERIAL.println("BOOT pressed -> sending wake trigger");
       bool ok = wake_trigger();
-      Serial.printf("wake_trigger -> %d\n", ok ? 1 : 0);
+      WAKE_LOG_SERIAL.printf("wake_trigger -> %d\n", ok ? 1 : 0);
 
       sLog.bootPressCount++;
       if (ok) {
@@ -216,11 +258,11 @@ void loop() {
   uint32_t now = millis();
   if (now - s_lastStatePrintMs >= 2000) {
     s_lastStatePrintMs = now;
-    Serial.printf("live: mounted=%d suspended=%d remote_wakeup_allowed=%d suspend_seq=%lu\n",
-                  st.mounted ? 1 : 0,
-                  st.suspended ? 1 : 0,
-                  st.remote_wakeup_allowed ? 1 : 0,
-                  (unsigned long)suspendSeqNow);
+    WAKE_LOG_SERIAL.printf("live: mounted=%d suspended=%d remote_wakeup_allowed=%d suspend_seq=%lu\n",
+                           st.mounted ? 1 : 0,
+                           st.suspended ? 1 : 0,
+                           st.remote_wakeup_allowed ? 1 : 0,
+                           (unsigned long)suspendSeqNow);
   }
 
   delay(20);
