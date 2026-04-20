@@ -1,12 +1,30 @@
 # esp32-wakeup-sleep
 
-Minimal USB remote wake core for ESP32 TinyUSB device mode.
+ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
 
-do this
-```zsh
-cd ~/Documents/Arduino/libraries
-git clone https://github.com/9mada4/esp32-wakeup-sleep.git 
-```
+## Arduino IDE で使う（推奨）
+
+1. リポジトリ直下の `esp32-wakeup-sleep-arduino-min.zip` をダウンロードします。
+2. Arduino IDE で `スケッチ > ライブラリをインクルード > .ZIP形式のライブラリをインストール` を選び、上の zip を指定します。
+3. この方法なら移動作業は不要です（IDE が `Documents/Arduino/libraries` に配置します）。
+4. 手動で展開する場合は、展開先を `Documents/Arduino/libraries/esp32-wakeup-sleep` にします。
+5. `ファイル > スケッチ例 > ESP32WakeCore > minimal` を開きます。
+6. `minimal.ino` の `appSetup() / appLoop() / appOnWakeButton()` を編集して使います。
+
+## 配布 zip の中身
+
+- `library.properties`
+- `src/wake_core.h`
+- `src/wake_core.c`
+- `examples/minimal/minimal.ino`
+
+## まず触る場所（minimal.ino）
+
+- 起動時処理: `appSetup()`
+- 通常ループ: `appLoop()`
+- BOOT押下で wake 要求後の処理: `appOnWakeButton(bool wakeSent)`
+
+`setup()` / `loop()` 側には、USB HID と Remote Wake の最低限の土台だけを残しています。
 
 ## Public API
 
@@ -17,41 +35,7 @@ git clone https://github.com/9mada4/esp32-wakeup-sleep.git
 - `wake_state_t wake_get_state(void);`
 - `bool wake_trigger(void);`
 
-## Layout
+## 補足
 
-- `src/wake_core.c`
-- `src/wake_core.h`
-- `src/esp32s3/libwakecore.a` (generated, precompiled archive slot)
-- `tools/build_idf_archive.sh`
-- `examples/minimal/minimal.ino`
-
-## ESP-IDF
-
-This repository is structured as a single component. Add it to an ESP-IDF project and include `wake_core.h`.
-
-## Arduino IDE (`.a` linkage)
-
-This repository is configured for precompiled archive linkage:
-
-- Build the low-level implementation once with ESP-IDF:
-```zsh
-./tools/build_idf_archive.sh esp32s3
-```
-- This generates `src/esp32s3/libwakecore.a`.
-- The build script forces `CONFIG_TINYUSB_HID_COUNT=1` in its temporary ESP-IDF project so the HID Mouse class is linked for USB enumeration.
-- Arduino IDE then links that archive (`precompiled=full`, `ldflags=-lwakecore`) instead of rebuilding internals.
-- If the archive is missing on ESP32-S3, the source path intentionally errors to prevent accidental non-IDF fallback.
-- USB suspend/resume state is tracked inside the archive via TinyUSB callbacks (`tud_suspend_cb`/`tud_resume_cb`), so Arduino sketch-side USB event wiring is not required for the basic wake path.
-
-Current support target:
-
-- ESP32-S3 (`build.mcu=esp32s3`)
-
-Constraints:
-
-- Toolchain/ABI must match the Arduino core generation you link against.
-- The archive's unresolved IDF symbols must exist in Arduino's link graph (see `src/esp32s3/libwakecore.undefined.txt`).
-- Board support must expose TinyUSB device mode.
-- On host side, USB must stay in suspend (not power-cut) for remote wake to work.
-
-The included sketch at `examples/minimal/minimal.ino` is the baseline smoke test for Arduino IDE integration.
+- `idf_boot_button_wake_test/` や `tools/` は、Arduino 最小運用には不要です。
+- `minimal.io` ではなく `minimal.ino` が正しいファイル名です。
