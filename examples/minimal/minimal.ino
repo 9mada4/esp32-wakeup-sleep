@@ -2,18 +2,12 @@
 #include <Preferences.h>
 #include <string.h>
 
-#if __has_include("USB.h")
-#include "USB.h"
-#define WAKE_HAS_ARDUINO_USB_EVENTS 1
-#else
-#define WAKE_HAS_ARDUINO_USB_EVENTS 0
-#endif
-
 static const int kBootButtonPin = 0;  // ESP32-S3 BOOT button (active low)
 static bool s_lastBootLevel = true;
 static uint32_t s_lastPrintedSuspendSeq = 0;
 static uint32_t s_lastStatePrintMs = 0;
 static uint32_t s_lastSerialRxMs = 0;
+static bool s_prevSuspended = false;
 static char s_serialLine[64];
 static size_t s_serialLineLen = 0;
 
@@ -146,28 +140,6 @@ static void pollSerialCommands() {
   }
 }
 
-#if WAKE_HAS_ARDUINO_USB_EVENTS
-static void onArduinoUsbEvent(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
-  (void)arg;
-  (void)event_base;
-
-  if (event_id == ARDUINO_USB_SUSPEND_EVENT) {
-    bool remoteWakeupEn = false;
-    if (event_data != nullptr) {
-      auto* data = reinterpret_cast<arduino_usb_event_data_t*>(event_data);
-      remoteWakeupEn = data->suspend.remote_wakeup_en;
-    }
-    wake_usb_on_suspend(remoteWakeupEn);
-    sLog.suspendEventCount++;
-    saveWakeLog();
-  } else if (event_id == ARDUINO_USB_RESUME_EVENT) {
-    wake_usb_on_resume();
-    sLog.resumeEventCount++;
-    saveWakeLog();
-  }
-}
-#endif
-
 void setup() {
   Serial.begin(115200);
   delay(200);
@@ -187,12 +159,8 @@ void setup() {
 
   pinMode(kBootButtonPin, INPUT_PULLUP);
   s_lastBootLevel = (digitalRead(kBootButtonPin) == HIGH);
-
-#if WAKE_HAS_ARDUINO_USB_EVENTS
-  USB.onEvent(ARDUINO_USB_SUSPEND_EVENT, onArduinoUsbEvent);
-  USB.onEvent(ARDUINO_USB_RESUME_EVENT, onArduinoUsbEvent);
-  Serial.println("arduino usb suspend/resume hook ready");
-#endif
+  s_lastPrintedSuspendSeq = wake_usb_get_suspend_seq();
+  s_prevSuspended = wake_get_state().suspended;
 
   Serial.println("wake core ready");
   Serial.println("press BOOT button to send wake trigger");
@@ -202,6 +170,24 @@ void setup() {
 }
 
 void loop() {
+  wake_state_t st = wake_get_state();
+  uint32_t suspendSeqNow = wake_usb_get_suspend_seq();
+
+  if (suspendSeqNow != s_lastPrintedSuspendSeq) {
+    uint32_t delta = suspendSeqNow - s_lastPrintedSuspendSeq;
+    sLog.suspendEventCount += delta;
+    s_lastPrintedSuspendSeq = suspendSeqNow;
+    saveWakeLog();
+    printWakeLog("usb-suspend");
+  }
+
+  if (s_prevSuspended && !st.suspended) {
+    sLog.resumeEventCount++;
+    saveWakeLog();
+    printWakeLog("usb-resume");
+  }
+  s_prevSuspended = st.suspended;
+
   bool bootPressed = (digitalRead(kBootButtonPin) == LOW);
   if (bootPressed && s_lastBootLevel) {
     delay(20);  // debounce
@@ -227,16 +213,9 @@ void loop() {
 
   pollSerialCommands();
 
-  uint32_t suspendSeqNow = wake_usb_get_suspend_seq();
-  if (suspendSeqNow != s_lastPrintedSuspendSeq) {
-    s_lastPrintedSuspendSeq = suspendSeqNow;
-    printWakeLog("usb-event");
-  }
-
   uint32_t now = millis();
   if (now - s_lastStatePrintMs >= 2000) {
     s_lastStatePrintMs = now;
-    wake_state_t st = wake_get_state();
     Serial.printf("live: mounted=%d suspended=%d remote_wakeup_allowed=%d suspend_seq=%lu\n",
                   st.mounted ? 1 : 0,
                   st.suspended ? 1 : 0,

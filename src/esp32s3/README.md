@@ -15,3 +15,7 @@ Generate/update it with:
 The script also emits unresolved symbol list to:
 
 - `libwakecore.undefined.txt`
+
+Notes:
+
+- Archive generation enforces `CONFIG_TINYUSB_HID_COUNT=1` in the temporary ESP-IDF project.

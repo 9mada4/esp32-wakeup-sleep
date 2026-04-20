@@ -38,9 +38,10 @@ This repository is configured for precompiled archive linkage:
 ./tools/build_idf_archive.sh esp32s3
 ```
 - This generates `src/esp32s3/libwakecore.a`.
+- The build script forces `CONFIG_TINYUSB_HID_COUNT=1` in its temporary ESP-IDF project so the HID Mouse class is linked for USB enumeration.
 - Arduino IDE then links that archive (`precompiled=full`, `ldflags=-lwakecore`) instead of rebuilding internals.
 - If the archive is missing on ESP32-S3, the source path intentionally errors to prevent accidental non-IDF fallback.
-- For behavior parity with `main.c`, feed Arduino USB suspend/resume events into `wake_usb_on_suspend()` / `wake_usb_on_resume()` from your sketch.
+- USB suspend/resume state is tracked inside the archive via TinyUSB callbacks (`tud_suspend_cb`/`tud_resume_cb`), so Arduino sketch-side USB event wiring is not required for the basic wake path.
 
 Current support target:
 
@@ -51,5 +52,6 @@ Constraints:
 - Toolchain/ABI must match the Arduino core generation you link against.
 - The archive's unresolved IDF symbols must exist in Arduino's link graph (see `src/esp32s3/libwakecore.undefined.txt`).
 - Board support must expose TinyUSB device mode.
+- On host side, USB must stay in suspend (not power-cut) for remote wake to work.
 
 The included sketch at `examples/minimal/minimal.ino` is the baseline smoke test for Arduino IDE integration.

@@ -38,6 +38,11 @@ cat > "${MAIN_DIR}/dummy_main.c" <<'C_EOF'
 void app_main(void) {}
 C_EOF
 
+# Ensure TinyUSB HID class is compiled in for Mouse descriptor enumeration.
+cat > "${BUILD_PROJ_DIR}/sdkconfig.defaults" <<'KCONFIG_EOF'
+CONFIG_TINYUSB_HID_COUNT=1
+KCONFIG_EOF
+
 idf.py -C "${BUILD_PROJ_DIR}" set-target "${TARGET}" >/dev/null
 idf.py -C "${BUILD_PROJ_DIR}" build
 

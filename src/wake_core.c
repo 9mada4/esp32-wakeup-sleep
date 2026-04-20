@@ -154,16 +154,6 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     (void)bufsize;
 }
 
-void __attribute__((weak)) tud_suspend_cb(bool remote_wakeup_en)
-{
-    wake_usb_on_suspend(remote_wakeup_en);
-}
-
-void __attribute__((weak)) tud_resume_cb(void)
-{
-    wake_usb_on_resume();
-}
-
 #elif WAKE_USB_BACKEND_ARDUINO
 static esp_err_t usb_init_internal(void)
 {
@@ -241,6 +231,18 @@ static bool wake_trigger_usb(void)
 {
     ESP_LOGW(TAG, "USB wake unavailable in this build");
     return false;
+}
+#endif
+
+#if WAKE_USB_BACKEND_IDF || WAKE_USB_BACKEND_ARDUINO
+void __attribute__((weak)) tud_suspend_cb(bool remote_wakeup_en)
+{
+    wake_usb_on_suspend(remote_wakeup_en);
+}
+
+void __attribute__((weak)) tud_resume_cb(void)
+{
+    wake_usb_on_resume();
 }
 #endif
 #endif
