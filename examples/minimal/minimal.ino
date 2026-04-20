@@ -3,6 +3,7 @@
 #include <string.h>
 #if defined(ARDUINO_ARCH_ESP32)
 #include <USB.h>
+#include <USBHID.h>
 #include <USBHIDMouse.h>
 #define WAKE_HAS_ARDUINO_USB_HID 1
 #else
@@ -12,6 +13,10 @@
 #include "tusb.h"
 #endif
 
+#ifndef WAKE_USB_REMOTE_WAKE_ATTR
+#define WAKE_USB_REMOTE_WAKE_ATTR 0x20u
+#endif
+
 #if defined(ARDUINO_ARCH_ESP32)
 #define WAKE_LOG_SERIAL Serial0
 #else
@@ -19,6 +24,7 @@
 #endif
 
 #if WAKE_HAS_ARDUINO_USB_HID
+static USBHID sUsbHid(HID_ITF_PROTOCOL_MOUSE);
 static USBHIDMouse sUsbMouse;
 #endif
 
@@ -33,6 +39,41 @@ static size_t s_serialLineLen = 0;
 
 Preferences sPrefs;
 static bool sPrefsReady = false;
+
+#if WAKE_HAS_ARDUINO_USB_HID
+static void onArduinoUsbEvent(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
+  (void)arg;
+  if (event_base != ARDUINO_USB_EVENTS) {
+    return;
+  }
+
+  if (event_id == ARDUINO_USB_SUSPEND_EVENT) {
+    bool remoteWakeEnabled = false;
+    if (event_data != nullptr) {
+      remoteWakeEnabled = ((arduino_usb_event_data_t*)event_data)->suspend.remote_wakeup_en;
+    }
+    wake_usb_on_suspend(remoteWakeEnabled);
+    WAKE_LOG_SERIAL.printf("usb event: suspend remote_wakeup_en=%d\n", remoteWakeEnabled ? 1 : 0);
+    return;
+  }
+
+  if (event_id == ARDUINO_USB_RESUME_EVENT) {
+    wake_usb_on_resume();
+    WAKE_LOG_SERIAL.println("usb event: resume");
+    return;
+  }
+
+  if (event_id == ARDUINO_USB_STARTED_EVENT) {
+    WAKE_LOG_SERIAL.println("usb event: started");
+    return;
+  }
+
+  if (event_id == ARDUINO_USB_STOPPED_EVENT) {
+    WAKE_LOG_SERIAL.println("usb event: stopped");
+    return;
+  }
+}
+#endif
 
 typedef struct {
   uint32_t bootPressCount;
@@ -176,12 +217,23 @@ void setup() {
 #endif
 
 #if WAKE_HAS_ARDUINO_USB_HID
+  USB.onEvent(onArduinoUsbEvent);
+  USB.usbClass(TUSB_CLASS_HID);
+  USB.usbSubClass(HID_SUBCLASS_BOOT);
+  USB.usbProtocol(HID_ITF_PROTOCOL_MOUSE);
+  USB.usbAttributes((uint8_t)WAKE_USB_REMOTE_WAKE_ATTR);
+  USB.usbPower(100);
+  USB.productName("ESP32WakeCore");
+  (void)sUsbHid;
   sUsbMouse.begin();
-#if defined(TUSB_DESC_CONFIG_ATT_SELF_POWERED) && defined(TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP)
-  USB.usbAttributes((uint8_t)(TUSB_DESC_CONFIG_ATT_SELF_POWERED | TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP));
-#endif
-  USB.begin();
-  WAKE_LOG_SERIAL.println("arduino USB HID begin done");
+  bool usbBeginOk = USB.begin();
+  WAKE_LOG_SERIAL.printf("arduino USB HID begin done (ok=%d class=%u subclass=%u proto=%u attr=0x%02X power_mA=%u)\n",
+                         usbBeginOk ? 1 : 0,
+                         (unsigned int)USB.usbClass(),
+                         (unsigned int)USB.usbSubClass(),
+                         (unsigned int)USB.usbProtocol(),
+                         (unsigned int)USB.usbAttributes(),
+                         (unsigned int)USB.usbPower());
 #else
   WAKE_LOG_SERIAL.println("arduino USB HID begin skipped");
 #endif

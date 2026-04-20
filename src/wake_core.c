@@ -37,6 +37,11 @@ static const char *TAG = "wake_core";
 #elif WAKE_USB_BACKEND_ARDUINO
 #include "esp32-hal-tinyusb.h"
 #include "tusb.h"
+#if __has_include("class/hid/hid.h")
+#include "class/hid/hid.h"
+#elif __has_include("tinyusb/src/class/hid/hid.h")
+#include "tinyusb/src/class/hid/hid.h"
+#endif
 #endif
 
 static volatile bool s_usb_initialized = false;
@@ -98,13 +103,15 @@ static esp_err_t usb_init_internal(void)
 
 static bool wake_trigger_usb(void)
 {
+    const bool suspended_now = s_usb_suspended || tud_suspended();
+
     ESP_LOGI(TAG,
              "wake request[source=api]: mounted=%d suspended=%d remote_wakeup_allowed=%d",
              tud_mounted() ? 1 : 0,
-             s_usb_suspended ? 1 : 0,
+             suspended_now ? 1 : 0,
              s_usb_remote_wakeup_allowed ? 1 : 0);
 
-    if (tud_mounted() && s_usb_suspended) {
+    if (tud_mounted() && suspended_now) {
         if (!s_usb_remote_wakeup_allowed) {
             ESP_LOGW(TAG, "remote_wakeup_allowed=0, trying tud_remote_wakeup() anyway");
         }
@@ -162,7 +169,7 @@ static esp_err_t usb_init_internal(void)
     /* In Arduino builds, USB classes are typically enabled before USB.begin(). */
     if (tud_inited()) {
         s_usb_initialized = true;
-        ESP_LOGI(TAG, "TinyUSB already started by Arduino USB stack; attaching wake hooks only");
+        ESP_LOGI(TAG, "TinyUSB already started by Arduino USB stack; reusing active descriptors");
         return ESP_OK;
     }
 
@@ -174,10 +181,10 @@ static esp_err_t usb_init_internal(void)
         .serial_number = "0",
         .fw_version = 0x0100,
         .usb_version = 0x0200,
-        .usb_class = TUSB_CLASS_MISC,
-        .usb_subclass = MISC_SUBCLASS_COMMON,
-        .usb_protocol = MISC_PROTOCOL_IAD,
-        .usb_attributes = (uint8_t)(TUSB_DESC_CONFIG_ATT_SELF_POWERED | TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP),
+        .usb_class = TUSB_CLASS_HID,
+        .usb_subclass = HID_SUBCLASS_BOOT,
+        .usb_protocol = HID_ITF_PROTOCOL_MOUSE,
+        .usb_attributes = (uint8_t)TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP,
         .usb_power_ma = 100,
         .webusb_enabled = false,
         .webusb_url = "espressif.github.io/arduino-esp32/webusb.html",
@@ -206,13 +213,15 @@ static esp_err_t usb_init_internal(void)
 
 static bool wake_trigger_usb(void)
 {
+    const bool suspended_now = s_usb_suspended || tud_suspended();
+
     ESP_LOGI(TAG,
              "wake request[source=api]: mounted=%d suspended=%d remote_wakeup_allowed=%d",
              tud_mounted() ? 1 : 0,
-             s_usb_suspended ? 1 : 0,
+             suspended_now ? 1 : 0,
              s_usb_remote_wakeup_allowed ? 1 : 0);
 
-    if (tud_mounted() && s_usb_suspended) {
+    if (tud_mounted() && suspended_now) {
         if (!s_usb_remote_wakeup_allowed) {
             ESP_LOGW(TAG, "remote_wakeup_allowed=0, trying tud_remote_wakeup() anyway");
         }
@@ -378,10 +387,10 @@ wake_state_t wake_get_state(void)
     st.mounted = false;
 #endif
 #if WAKE_USB_BACKEND_IDF
-    st.suspended = s_usb_suspended;
+    st.suspended = s_usb_suspended || tud_suspended();
     st.remote_wakeup_allowed = s_usb_remote_wakeup_allowed;
 #elif WAKE_USB_BACKEND_ARDUINO
-    st.suspended = s_usb_suspended;
+    st.suspended = s_usb_suspended || tud_suspended();
     st.remote_wakeup_allowed = s_usb_remote_wakeup_allowed;
 #else
     st.suspended = false;
