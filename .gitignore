@@ -57,3 +57,10 @@ dkms.conf
 # macOS
 *.DS_Store
 /.DS_Store
+
+# Allow tracking the precompiled archive slot for Arduino linkage.
+!src/esp32s3/libwakecore.a
+!src/esp32s3/libwakecore.undefined.txt
+
+# Local ESP-IDF archive build workspace
+.idf-archive-build/

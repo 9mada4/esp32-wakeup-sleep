@@ -3,11 +3,25 @@
 #include <stdint.h>
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "wake_core";
 
+#if defined(ARDUINO) && defined(CONFIG_IDF_TARGET_ESP32S3)
+#error "ESP32-S3 Arduino builds must link precompiled src/esp32s3/libwakecore.a (run ./tools/build_idf_archive.sh esp32s3)."
+#endif
+
 #if USE_USB
-#if __has_include("tinyusb.h") && __has_include("tinyusb_default_config.h")
+#if defined(ARDUINO)
+#if __has_include("esp32-hal-tinyusb.h") && __has_include("tusb.h")
+#define WAKE_USB_BACKEND_ARDUINO 1
+#elif __has_include("tinyusb.h") && __has_include("tinyusb_default_config.h")
+#define WAKE_USB_BACKEND_IDF 1
+#else
+#define WAKE_USB_BACKEND_NONE 1
+#endif
+#elif __has_include("tinyusb.h") && __has_include("tinyusb_default_config.h")
 #define WAKE_USB_BACKEND_IDF 1
 #elif __has_include("esp32-hal-tinyusb.h") && __has_include("tusb.h")
 #define WAKE_USB_BACKEND_ARDUINO 1
@@ -34,6 +48,30 @@ static const char *TAG = "wake_core";
 static volatile bool s_usb_suspended = false;
 static volatile bool s_usb_remote_wakeup_allowed = false;
 static volatile bool s_usb_initialized = false;
+
+#ifndef WAKE_FORCE_TRIGGER
+#define WAKE_FORCE_TRIGGER 1
+#endif
+
+#ifndef WAKE_FORCE_TRIGGER_PULSE_MS
+#define WAKE_FORCE_TRIGGER_PULSE_MS 20
+#endif
+
+static bool wake_force_usb_bus_pulse(void)
+{
+#if WAKE_USB_BACKEND_IDF || WAKE_USB_BACKEND_ARDUINO
+    if (!tud_mounted()) {
+        return false;
+    }
+    tud_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(WAKE_FORCE_TRIGGER_PULSE_MS));
+    tud_connect();
+    ESP_LOGW(TAG, "remote wake unavailable; USB reconnect pulse sent");
+    return true;
+#else
+    return false;
+#endif
+}
 
 #if WAKE_USB_BACKEND_IDF
 static const uint8_t hid_report_descriptor[] = {
@@ -87,7 +125,14 @@ static bool wake_trigger_usb(void)
 {
     bool ok = tud_remote_wakeup();
     ESP_LOGI(TAG, "tud_remote_wakeup() -> %d", ok ? 1 : 0);
-    return ok;
+    if (ok) {
+        return true;
+    }
+#if WAKE_FORCE_TRIGGER
+    return wake_force_usb_bus_pulse();
+#else
+    return false;
+#endif
 }
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
@@ -179,7 +224,14 @@ static bool wake_trigger_usb(void)
     bool ok = tud_remote_wakeup();
     s_usb_remote_wakeup_allowed = ok;
     ESP_LOGI(TAG, "tud_remote_wakeup() -> %d", ok ? 1 : 0);
-    return ok;
+    if (ok) {
+        return true;
+    }
+#if WAKE_FORCE_TRIGGER
+    return wake_force_usb_bus_pulse();
+#else
+    return false;
+#endif
 }
 #else
 static esp_err_t usb_init_internal(void)

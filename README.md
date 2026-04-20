@@ -12,27 +12,40 @@ git clone https://github.com/9mada4/esp32-wakeup-sleep.git
 
 - `esp_err_t wake_init(void);`
 - `wake_state_t wake_get_state(void);`
-- `bool wake_is_ready(void);`
 - `bool wake_trigger(void);`
 
 ## Layout
 
 - `src/wake_core.c`
 - `src/wake_core.h`
+- `src/esp32s3/libwakecore.a` (generated, precompiled archive slot)
+- `tools/build_idf_archive.sh`
 - `examples/minimal/minimal.ino`
 
 ## ESP-IDF
 
 This repository is structured as a single component. Add it to an ESP-IDF project and include `wake_core.h`.
 
-## Arduino IDE
+## Arduino IDE (`.a` linkage)
 
-The repository also uses Arduino library layout via `src/` and `library.properties`, so Arduino IDE can discover it as a library.
+This repository is configured for precompiled archive linkage:
 
-Expected constraints:
+- Build the low-level implementation once with ESP-IDF:
+```zsh
+./tools/build_idf_archive.sh esp32s3
+```
+- This generates `src/esp32s3/libwakecore.a`.
+- Arduino IDE then links that archive (`precompiled=full`, `ldflags=-lwakecore`) instead of rebuilding internals.
+- If the archive is missing on ESP32-S3, the source path intentionally errors to prevent accidental non-IDF fallback.
 
+Current support target:
+
+- ESP32-S3 (`build.mcu=esp32s3`)
+
+Constraints:
+
+- Toolchain/ABI must match the Arduino core generation you link against.
+- The archive's unresolved IDF symbols must exist in Arduino's link graph (see `src/esp32s3/libwakecore.undefined.txt`).
 - Board support must expose TinyUSB device mode.
-- The Arduino core must ship the ESP-IDF TinyUSB headers used by this library.
-- Remote wakeup only works after the host suspends the USB device and allows remote wakeup.
 
 The included sketch at `examples/minimal/minimal.ino` is the baseline smoke test for Arduino IDE integration.
