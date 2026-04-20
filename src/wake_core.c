@@ -45,8 +45,6 @@ static const char *TAG = "wake_core";
 #include "tusb.h"
 #endif
 
-static volatile bool s_usb_suspended = false;
-static volatile bool s_usb_remote_wakeup_allowed = false;
 static volatile bool s_usb_initialized = false;
 
 #ifndef WAKE_FORCE_TRIGGER
@@ -168,19 +166,6 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     (void)bufsize;
 }
 
-void __attribute__((weak)) tud_suspend_cb(bool remote_wakeup_en)
-{
-    s_usb_suspended = true;
-    s_usb_remote_wakeup_allowed = remote_wakeup_en;
-    ESP_LOGI(TAG, "USB suspended, remote_wakeup_en=%d", remote_wakeup_en ? 1 : 0);
-}
-
-void __attribute__((weak)) tud_resume_cb(void)
-{
-    s_usb_suspended = false;
-    s_usb_remote_wakeup_allowed = false;
-    ESP_LOGI(TAG, "USB resumed");
-}
 #elif WAKE_USB_BACKEND_ARDUINO
 static esp_err_t usb_init_internal(void)
 {
@@ -226,7 +211,6 @@ static esp_err_t usb_init_internal(void)
 static bool wake_trigger_usb(void)
 {
     bool ok = tud_remote_wakeup();
-    s_usb_remote_wakeup_allowed = ok;
     ESP_LOGI(TAG, "tud_remote_wakeup() -> %d", ok ? 1 : 0);
     if (ok) {
         return true;
@@ -338,14 +322,11 @@ wake_state_t wake_get_state(void)
     st.mounted = false;
 #endif
 #if WAKE_USB_BACKEND_IDF
-    st.suspended = s_usb_suspended;
-    st.remote_wakeup_allowed = s_usb_remote_wakeup_allowed;
+    st.suspended = tud_suspended();
+    st.remote_wakeup_allowed = st.suspended;
 #elif WAKE_USB_BACKEND_ARDUINO
     st.suspended = tud_suspended();
-    if (!st.suspended) {
-        s_usb_remote_wakeup_allowed = false;
-    }
-    st.remote_wakeup_allowed = s_usb_remote_wakeup_allowed;
+    st.remote_wakeup_allowed = st.suspended;
 #else
     st.suspended = false;
     st.remote_wakeup_allowed = false;

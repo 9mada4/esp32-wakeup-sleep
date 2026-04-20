@@ -7,5 +7,6 @@
          U tud_disconnect
          U tud_mounted
          U tud_remote_wakeup
+         U tud_suspended
          U vTaskDelay
 wake_core.c.obj:
