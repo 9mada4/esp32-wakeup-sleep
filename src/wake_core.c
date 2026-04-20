@@ -115,8 +115,12 @@ static esp_err_t usb_init_internal(void)
     tusb_cfg.descriptor.high_speed_config = config_descriptor;
 #endif
     esp_err_t err = tinyusb_driver_install(&tusb_cfg);
-    if (err == ESP_OK) {
+    if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
         s_usb_initialized = true;
+        if (err == ESP_ERR_INVALID_STATE) {
+            ESP_LOGW(TAG, "TinyUSB already initialized by another owner; reusing existing stack");
+        }
+        return ESP_OK;
     }
     return err;
 }
@@ -164,14 +168,14 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     (void)bufsize;
 }
 
-void tud_suspend_cb(bool remote_wakeup_en)
+void __attribute__((weak)) tud_suspend_cb(bool remote_wakeup_en)
 {
     s_usb_suspended = true;
     s_usb_remote_wakeup_allowed = remote_wakeup_en;
     ESP_LOGI(TAG, "USB suspended, remote_wakeup_en=%d", remote_wakeup_en ? 1 : 0);
 }
 
-void tud_resume_cb(void)
+void __attribute__((weak)) tud_resume_cb(void)
 {
     s_usb_suspended = false;
     s_usb_remote_wakeup_allowed = false;
