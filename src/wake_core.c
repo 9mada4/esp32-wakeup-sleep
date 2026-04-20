@@ -141,8 +141,22 @@ static esp_err_t usb_init_internal(void)
         return ESP_OK;
     }
 
-    tinyusb_device_config_t cfg = TINYUSB_CONFIG_DEFAULT();
-    cfg.usb_attributes |= TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP;
+    tinyusb_device_config_t cfg = {
+        .vid = USB_ESPRESSIF_VID,
+        .pid = 0x0002,
+        .product_name = "ESP32WakeCore",
+        .manufacturer_name = "Espressif",
+        .serial_number = "0",
+        .fw_version = 0x0100,
+        .usb_version = 0x0200,
+        .usb_class = TUSB_CLASS_MISC,
+        .usb_subclass = MISC_SUBCLASS_COMMON,
+        .usb_protocol = MISC_PROTOCOL_IAD,
+        .usb_attributes = (uint8_t)(TUSB_DESC_CONFIG_ATT_SELF_POWERED | TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP),
+        .usb_power_ma = 100,
+        .webusb_enabled = false,
+        .webusb_url = "espressif.github.io/arduino-esp32/webusb.html",
+    };
 
     esp_err_t err = tinyusb_init(&cfg);
     if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
