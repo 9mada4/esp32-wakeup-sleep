@@ -1,6 +1,9 @@
 # esp32-wakeup-sleep
 
 ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
+- 必要要件
+  - USB-OTG(Tiny USB) があるボード
+  - ESP32-S3-WROOM-1で動作確認済
 
 ## Arduino IDE で使う（推奨）
 
@@ -10,6 +13,9 @@ ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
 4. 手動で展開する場合は、展開先を `Documents/Arduino/libraries/esp32-wakeup-sleep` にします。
 5. `ファイル > スケッチ例 > ESP32WakeCore > minimal` を開きます。
 6. `minimal.ino` の `appSetup() / appLoop() / appOnWakeButton()` を編集して使います。
+7. USB-ModeをUSB-OTG(Tiny USB)に変更
+8. 書き込み
+9. スケッチ例は，BOOTボタンを押すとスリープから復帰します．
 
 ## 配布 zip の中身
 
