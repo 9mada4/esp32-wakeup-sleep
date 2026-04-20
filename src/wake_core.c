@@ -7,13 +7,35 @@
 static const char *TAG = "wake_core";
 
 #if USE_USB
+#if __has_include("tinyusb.h") && __has_include("tinyusb_default_config.h")
+#define WAKE_USB_BACKEND_IDF 1
+#elif __has_include("esp32-hal-tinyusb.h") && __has_include("tusb.h")
+#define WAKE_USB_BACKEND_ARDUINO 1
+#else
+#define WAKE_USB_BACKEND_NONE 1
+#endif
+
+#if WAKE_USB_BACKEND_IDF
+#if __has_include("class/hid/hid.h")
+#include "class/hid/hid.h"
+#endif
+#if __has_include("class/hid/hid_device.h")
 #include "class/hid/hid_device.h"
+#elif __has_include("tinyusb/src/class/hid/hid_device.h")
+#include "tinyusb/src/class/hid/hid_device.h"
+#endif
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
+#elif WAKE_USB_BACKEND_ARDUINO
+#include "esp32-hal-tinyusb.h"
+#include "tusb.h"
+#endif
 
 static volatile bool s_usb_suspended = false;
 static volatile bool s_usb_remote_wakeup_allowed = false;
+static volatile bool s_usb_initialized = false;
 
+#if WAKE_USB_BACKEND_IDF
 static const uint8_t hid_report_descriptor[] = {
     TUD_HID_REPORT_DESC_MOUSE()
 };
@@ -43,6 +65,10 @@ static const uint8_t config_descriptor[] = {
 
 static esp_err_t usb_init_internal(void)
 {
+    if (s_usb_initialized) {
+        return ESP_OK;
+    }
+
     tinyusb_config_t tusb_cfg = TINYUSB_DEFAULT_CONFIG();
     tusb_cfg.descriptor.device = NULL;
     tusb_cfg.descriptor.string = NULL;
@@ -50,7 +76,11 @@ static esp_err_t usb_init_internal(void)
 #if (TUD_OPT_HIGH_SPEED)
     tusb_cfg.descriptor.high_speed_config = config_descriptor;
 #endif
-    return tinyusb_driver_install(&tusb_cfg);
+    esp_err_t err = tinyusb_driver_install(&tusb_cfg);
+    if (err == ESP_OK) {
+        s_usb_initialized = true;
+    }
+    return err;
 }
 
 static bool wake_trigger_usb(void)
@@ -102,6 +132,54 @@ void tud_resume_cb(void)
     s_usb_remote_wakeup_allowed = false;
     ESP_LOGI(TAG, "USB resumed");
 }
+#elif WAKE_USB_BACKEND_ARDUINO
+static esp_err_t usb_init_internal(void)
+{
+#if defined(SOC_USB_OTG_SUPPORTED) && SOC_USB_OTG_SUPPORTED
+#if defined(CONFIG_TINYUSB_ENABLED) && CONFIG_TINYUSB_ENABLED
+    if (s_usb_initialized) {
+        return ESP_OK;
+    }
+
+    tinyusb_device_config_t cfg = TINYUSB_CONFIG_DEFAULT();
+    cfg.usb_attributes |= TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP;
+
+    esp_err_t err = tinyusb_init(&cfg);
+    if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
+        s_usb_initialized = true;
+        return ESP_OK;
+    }
+    return err;
+#else
+    ESP_LOGE(TAG, "CONFIG_TINYUSB_ENABLED is off (set USB Mode to USB-OTG TinyUSB)");
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+#else
+    ESP_LOGE(TAG, "SOC_USB_OTG_SUPPORTED is false for this target");
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
+static bool wake_trigger_usb(void)
+{
+    bool ok = tud_remote_wakeup();
+    s_usb_remote_wakeup_allowed = ok;
+    ESP_LOGI(TAG, "tud_remote_wakeup() -> %d", ok ? 1 : 0);
+    return ok;
+}
+#else
+static esp_err_t usb_init_internal(void)
+{
+    ESP_LOGE(TAG, "No TinyUSB backend available");
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+static bool wake_trigger_usb(void)
+{
+    ESP_LOGW(TAG, "USB wake unavailable in this build");
+    return false;
+}
+#endif
 #endif
 
 #if USE_BLE
@@ -184,9 +262,24 @@ wake_state_t wake_get_state(void)
     wake_state_t st = {0};
 
 #if USE_USB
+#if WAKE_USB_BACKEND_IDF || WAKE_USB_BACKEND_ARDUINO
     st.mounted = tud_mounted();
+#else
+    st.mounted = false;
+#endif
+#if WAKE_USB_BACKEND_IDF
     st.suspended = s_usb_suspended;
     st.remote_wakeup_allowed = s_usb_remote_wakeup_allowed;
+#elif WAKE_USB_BACKEND_ARDUINO
+    st.suspended = tud_suspended();
+    if (!st.suspended) {
+        s_usb_remote_wakeup_allowed = false;
+    }
+    st.remote_wakeup_allowed = s_usb_remote_wakeup_allowed;
+#else
+    st.suspended = false;
+    st.remote_wakeup_allowed = false;
+#endif
 #elif USE_BLE
     {
         bool connected = wake_ble_is_connected();
