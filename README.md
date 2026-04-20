@@ -11,6 +11,9 @@ git clone https://github.com/9mada4/esp32-wakeup-sleep.git
 ## Public API
 
 - `esp_err_t wake_init(void);`
+- `void wake_usb_on_suspend(bool remote_wakeup_en);`
+- `void wake_usb_on_resume(void);`
+- `uint32_t wake_usb_get_suspend_seq(void);`
 - `wake_state_t wake_get_state(void);`
 - `bool wake_trigger(void);`
 
@@ -37,6 +40,7 @@ This repository is configured for precompiled archive linkage:
 - This generates `src/esp32s3/libwakecore.a`.
 - Arduino IDE then links that archive (`precompiled=full`, `ldflags=-lwakecore`) instead of rebuilding internals.
 - If the archive is missing on ESP32-S3, the source path intentionally errors to prevent accidental non-IDF fallback.
+- For behavior parity with `main.c`, feed Arduino USB suspend/resume events into `wake_usb_on_suspend()` / `wake_usb_on_resume()` from your sketch.
 
 Current support target:
 

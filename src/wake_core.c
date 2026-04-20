@@ -3,8 +3,6 @@
 #include <stdint.h>
 
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 static const char *TAG = "wake_core";
 
@@ -46,30 +44,9 @@ static const char *TAG = "wake_core";
 #endif
 
 static volatile bool s_usb_initialized = false;
-
-#ifndef WAKE_FORCE_TRIGGER
-#define WAKE_FORCE_TRIGGER 1
-#endif
-
-#ifndef WAKE_FORCE_TRIGGER_PULSE_MS
-#define WAKE_FORCE_TRIGGER_PULSE_MS 20
-#endif
-
-static bool wake_force_usb_bus_pulse(void)
-{
-#if WAKE_USB_BACKEND_IDF || WAKE_USB_BACKEND_ARDUINO
-    if (!tud_mounted()) {
-        return false;
-    }
-    tud_disconnect();
-    vTaskDelay(pdMS_TO_TICKS(WAKE_FORCE_TRIGGER_PULSE_MS));
-    tud_connect();
-    ESP_LOGW(TAG, "remote wake unavailable; USB reconnect pulse sent");
-    return true;
-#else
-    return false;
-#endif
-}
+static volatile bool s_usb_suspended = false;
+static volatile bool s_usb_remote_wakeup_allowed = false;
+static volatile uint32_t s_usb_suspend_seq = 0;
 
 #if WAKE_USB_BACKEND_IDF
 static const uint8_t hid_report_descriptor[] = {
@@ -125,16 +102,27 @@ static esp_err_t usb_init_internal(void)
 
 static bool wake_trigger_usb(void)
 {
-    bool ok = tud_remote_wakeup();
-    ESP_LOGI(TAG, "tud_remote_wakeup() -> %d", ok ? 1 : 0);
-    if (ok) {
-        return true;
+    ESP_LOGI(TAG,
+             "wake request[source=api]: mounted=%d suspended=%d remote_wakeup_allowed=%d",
+             tud_mounted() ? 1 : 0,
+             s_usb_suspended ? 1 : 0,
+             s_usb_remote_wakeup_allowed ? 1 : 0);
+
+    if (tud_mounted() && s_usb_suspended) {
+        if (!s_usb_remote_wakeup_allowed) {
+            ESP_LOGW(TAG, "remote_wakeup_allowed=0, trying tud_remote_wakeup() anyway");
+        }
+
+        bool ok = tud_remote_wakeup();
+        ESP_LOGI(TAG, "tud_remote_wakeup() -> %d", ok ? 1 : 0);
+        if (!ok && !s_usb_remote_wakeup_allowed) {
+            ESP_LOGW(TAG, "host may not have enabled USB remote wakeup permission");
+        }
+        return ok;
     }
-#if WAKE_FORCE_TRIGGER
-    return wake_force_usb_bus_pulse();
-#else
+
+    ESP_LOGW(TAG, "remote wakeup not allowed now");
     return false;
-#endif
 }
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
@@ -164,6 +152,16 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
     (void)report_type;
     (void)buffer;
     (void)bufsize;
+}
+
+void __attribute__((weak)) tud_suspend_cb(bool remote_wakeup_en)
+{
+    wake_usb_on_suspend(remote_wakeup_en);
+}
+
+void __attribute__((weak)) tud_resume_cb(void)
+{
+    wake_usb_on_resume();
 }
 
 #elif WAKE_USB_BACKEND_ARDUINO
@@ -210,16 +208,27 @@ static esp_err_t usb_init_internal(void)
 
 static bool wake_trigger_usb(void)
 {
-    bool ok = tud_remote_wakeup();
-    ESP_LOGI(TAG, "tud_remote_wakeup() -> %d", ok ? 1 : 0);
-    if (ok) {
-        return true;
+    ESP_LOGI(TAG,
+             "wake request[source=api]: mounted=%d suspended=%d remote_wakeup_allowed=%d",
+             tud_mounted() ? 1 : 0,
+             s_usb_suspended ? 1 : 0,
+             s_usb_remote_wakeup_allowed ? 1 : 0);
+
+    if (tud_mounted() && s_usb_suspended) {
+        if (!s_usb_remote_wakeup_allowed) {
+            ESP_LOGW(TAG, "remote_wakeup_allowed=0, trying tud_remote_wakeup() anyway");
+        }
+
+        bool ok = tud_remote_wakeup();
+        ESP_LOGI(TAG, "tud_remote_wakeup() -> %d", ok ? 1 : 0);
+        if (!ok && !s_usb_remote_wakeup_allowed) {
+            ESP_LOGW(TAG, "host may not have enabled USB remote wakeup permission");
+        }
+        return ok;
     }
-#if WAKE_FORCE_TRIGGER
-    return wake_force_usb_bus_pulse();
-#else
+
+    ESP_LOGW(TAG, "remote wakeup not allowed now");
     return false;
-#endif
 }
 #else
 static esp_err_t usb_init_internal(void)
@@ -283,6 +292,36 @@ static bool wake_trigger_ble(void)
 }
 #endif
 
+void wake_usb_on_suspend(bool remote_wakeup_en)
+{
+#if USE_USB
+    s_usb_suspended = true;
+    s_usb_remote_wakeup_allowed = remote_wakeup_en;
+    s_usb_suspend_seq++;
+    ESP_LOGI(TAG, "USB suspended, remote_wakeup_en=%d", remote_wakeup_en ? 1 : 0);
+#else
+    (void)remote_wakeup_en;
+#endif
+}
+
+void wake_usb_on_resume(void)
+{
+#if USE_USB
+    s_usb_suspended = false;
+    s_usb_remote_wakeup_allowed = false;
+    ESP_LOGI(TAG, "USB resumed");
+#endif
+}
+
+uint32_t wake_usb_get_suspend_seq(void)
+{
+#if USE_USB
+    return s_usb_suspend_seq;
+#else
+    return 0;
+#endif
+}
+
 esp_err_t wake_init(void)
 {
 #if USE_USB
@@ -322,11 +361,11 @@ wake_state_t wake_get_state(void)
     st.mounted = false;
 #endif
 #if WAKE_USB_BACKEND_IDF
-    st.suspended = tud_suspended();
-    st.remote_wakeup_allowed = st.suspended;
+    st.suspended = s_usb_suspended;
+    st.remote_wakeup_allowed = s_usb_remote_wakeup_allowed;
 #elif WAKE_USB_BACKEND_ARDUINO
-    st.suspended = tud_suspended();
-    st.remote_wakeup_allowed = st.suspended;
+    st.suspended = s_usb_suspended;
+    st.remote_wakeup_allowed = s_usb_remote_wakeup_allowed;
 #else
     st.suspended = false;
     st.remote_wakeup_allowed = false;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "esp_err.h"
 
@@ -24,6 +25,11 @@ typedef struct {
 
 esp_err_t wake_init(void);
 bool wake_trigger(void);
+
+/* Mirror main.c USB state tracking hooks. */
+void wake_usb_on_suspend(bool remote_wakeup_en);
+void wake_usb_on_resume(void);
+uint32_t wake_usb_get_suspend_seq(void);
 
 /* Optional debug state. USB/BLE use transport-specific semantics. */
 wake_state_t wake_get_state(void);
