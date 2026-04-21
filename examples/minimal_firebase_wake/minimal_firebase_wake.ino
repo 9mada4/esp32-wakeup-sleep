@@ -13,6 +13,7 @@ struct FirebaseSession;
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <ESPmDNS.h>
 #define WAKE_HAS_ARDUINO_USB_HID 1
 #else
 #define WAKE_HAS_ARDUINO_USB_HID 0
@@ -76,6 +77,7 @@ static void configureUsbForWake() {
 static const char* kConfigNamespace = "wake_cfg";
 static const char* kSetupApSsid = "ESP32-Wake-Setup";
 static const char* kSetupApPass = "esp32setup";
+static const char* kFixedHostName = "esp32-wake";
 static const uint32_t kWifiConnectTimeoutMs = 20000;
 static const uint32_t kFirebasePollIntervalMs = 1000;
 
@@ -97,6 +99,8 @@ static WakeConfig s_config = {};
 static FirebaseSession s_firebase = {};
 static WebServer s_setupServer(80);
 static bool s_configMode = false;
+static bool s_setupServerStarted = false;
+static bool s_mdnsStarted = false;
 static bool s_restartQueued = false;
 static uint32_t s_restartAtMs = 0;
 static uint32_t s_lastPollMs = 0;
@@ -195,6 +199,7 @@ static String htmlEscape(const String& in) {
 
 static void sendSetupPage(int code, const String& notice = "") {
   String ipText = WiFi.softAPIP().toString();
+  String fixedUrl = String("http://") + kFixedHostName + ".local/";
   String html = "<!doctype html><html><head><meta charset='utf-8'>"
                 "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                 "<title>ESP32 Wake Setup</title></head><body>"
@@ -206,6 +211,9 @@ static void sendSetupPage(int code, const String& notice = "") {
   html += htmlEscape(kSetupApSsid);
   html += "</code> / IP: <code>";
   html += htmlEscape(ipText);
+  html += "</code></p>";
+  html += "<p>Portal URL: <code>";
+  html += htmlEscape(fixedUrl);
   html += "</code></p>"
           "<form method='POST' action='/save'>"
           "<label>wifi_ssid</label><br><input name='wifi_ssid' maxlength='32' value='" + htmlEscape(String(s_config.wifi_ssid)) + "' style='width:95%'><br><br>"
@@ -260,7 +268,7 @@ static void handleSetupRoot() {
 
 static void handleSetupStatus() {
   String body;
-  body.reserve(320);
+  body.reserve(380);
   body += "mode=config\n";
   body += "ap_ssid=";
   body += kSetupApSsid;
@@ -274,6 +282,12 @@ static void handleSetupStatus() {
   body += "firebase_db=";
   body += String(s_config.database_url);
   body += "\n";
+  body += "fixed_url=http://";
+  body += kFixedHostName;
+  body += ".local/\n";
+  body += "portal_url=http://";
+  body += kFixedHostName;
+  body += ".local/\n";
   s_setupServer.send(200, "text/plain; charset=utf-8", body);
 }
 
@@ -297,26 +311,59 @@ static void handleSetupSave() {
   WAKE_LOG_SERIAL.println("Config saved to NVS. Reboot scheduled.");
 }
 
-static void startConfigMode() {
-  WiFi.mode(WIFI_AP);
+static bool ensureSetupApAndServer() {
+  WiFi.mode(WIFI_AP_STA);
   if (!WiFi.softAP(kSetupApSsid, kSetupApPass)) {
     WAKE_LOG_SERIAL.println("Failed to start setup AP");
-    return;
+    return false;
   }
 
-  s_setupServer.on("/", HTTP_GET, handleSetupRoot);
-  s_setupServer.on("/save", HTTP_POST, handleSetupSave);
-  s_setupServer.on("/status", HTTP_GET, handleSetupStatus);
-  s_setupServer.begin();
+  if (!s_setupServerStarted) {
+    s_setupServer.on("/", HTTP_GET, handleSetupRoot);
+    s_setupServer.on("/save", HTTP_POST, handleSetupSave);
+    s_setupServer.on("/status", HTTP_GET, handleSetupStatus);
+    s_setupServer.begin();
+    s_setupServerStarted = true;
+  }
 
+  (void)ensureMdnsForPortal();
+  WAKE_LOG_SERIAL.printf("Setup portal: http://%s.local/ (AP SSID: %s)\n",
+                         kFixedHostName,
+                         kSetupApSsid);
+  return true;
+}
+
+static void startConfigMode() {
+  if (!ensureSetupApAndServer()) {
+    return;
+  }
   s_configMode = true;
-  WAKE_LOG_SERIAL.printf("Config mode: connect to AP '%s', open http://%s/\n",
-                         kSetupApSsid,
-                         WiFi.softAPIP().toString().c_str());
+  WAKE_LOG_SERIAL.println("Config mode enabled (safe standby).");
+}
+
+static bool ensureMdnsForPortal() {
+  bool ap_ready = ((uint32_t)WiFi.softAPIP() != 0);
+  bool sta_ready = (WiFi.status() == WL_CONNECTED);
+  if (!ap_ready && !sta_ready) {
+    return false;
+  }
+  if (s_mdnsStarted) {
+    return true;
+  }
+
+  if (!MDNS.begin(kFixedHostName)) {
+    WAKE_LOG_SERIAL.println("mDNS start failed");
+    return false;
+  }
+  MDNS.addService("http", "tcp", 80);
+  s_mdnsStarted = true;
+  WAKE_LOG_SERIAL.printf("Portal URL: http://%s.local/\n", kFixedHostName);
+  return true;
 }
 
 static bool connectWifiSta(const WakeConfig& cfg) {
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);
+  (void)WiFi.softAP(kSetupApSsid, kSetupApPass);
   WiFi.setAutoReconnect(true);
   WiFi.begin(cfg.wifi_ssid, cfg.wifi_password);
 
@@ -327,6 +374,7 @@ static bool connectWifiSta(const WakeConfig& cfg) {
 
   if (WiFi.status() == WL_CONNECTED) {
     WAKE_LOG_SERIAL.printf("Wi-Fi connected: %s\n", WiFi.localIP().toString().c_str());
+    s_mdnsStarted = false;
     return true;
   }
 
@@ -578,29 +626,44 @@ static void appSetup() {
     return;
   }
 
+  if (!ensureSetupApAndServer()) {
+    WAKE_LOG_SERIAL.println("Failed to keep setup AP available.");
+  }
+
   if (!connectWifiSta(s_config)) {
     WAKE_LOG_SERIAL.println("Wi-Fi unavailable. Entering config mode for safe standby.");
     startConfigMode();
     return;
   }
 
+  s_configMode = false;
+  (void)ensureMdnsForPortal();
+  WAKE_LOG_SERIAL.println("STA connected. Setup portal: http://esp32-wake.local/");
   s_lastPollMs = millis();
 #endif
 }
 
 static void appLoop() {
 #if WAKE_HAS_ARDUINO_USB_HID
-  if (s_configMode) {
+  if (s_setupServerStarted) {
     s_setupServer.handleClient();
-    if (s_restartQueued && timeReached(millis(), s_restartAtMs)) {
-      delay(50);
-      ESP.restart();
-    }
+  }
+
+  if (s_restartQueued && timeReached(millis(), s_restartAtMs)) {
+    delay(50);
+    ESP.restart();
+  }
+
+  if (s_configMode) {
     return;
   }
 
   if (WiFi.status() != WL_CONNECTED) {
     return;
+  }
+  (void)ensureMdnsForPortal();
+  if (s_mdnsStarted) {
+    MDNS.update();
   }
 
   uint32_t now = millis();
