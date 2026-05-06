@@ -39,9 +39,22 @@ ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
 `setup()` / `loop()` 側には、USB HID と Remote Wake の最低限の土台だけを残しています。
 
 ## 動作確認できたらFireBase（minimal_firebase_wake.ino）
+FireBaseのリアルタイムデータベースを用いて，VPNなしで外出先からスリープ復帰可能
+- AP mode (Wi-Fi setup mode)
+  - SSID: ESP32-WiFi-Setup
+  - Password: esp32setup
+  - URL: http://192.168.4.1/
 
-- FireBaseのリアルタイムデータベースを用いて，VPNなしで外出先からスリープ復帰可能
-- FireBaseの設定方法はこちら．
+| 入力項目 | 内容 |
+| - | - |
+| Wi-Fi SSID | YOUR_WI-FI_SSID |
+| Wi-Fi Pass | YOUR_WI-FI_PASS |
+| FireBase API | YOUR_API |
+| FireBase URL | YOUR_URL |
+| Username (email) | YOUR_EMAIL |
+| Pass | YOUR_PASS |
+  
+
 ## Public API
 
 - `esp_err_t wake_init(void);`
