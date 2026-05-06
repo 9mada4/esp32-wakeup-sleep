@@ -41,12 +41,14 @@ ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
 ## 動作確認できたらFireBase（minimal_firebase_wake.ino）
 FireBaseのリアルタイムデータベースを用いて，VPNなしで外出先からスリープ復帰可能
 
-Firebase Console側の作成から `/wake/request` とルール設定までの手順は [FireBase 設定方法.md](docs/FireBase%20設定方法.md) を参照してください。
+1. Firebase Console側の作成から `/wake/request` とルール設定までの手順は [FireBase 設定方法.md](docs/FireBase%20設定方法.md) を参照してください。
 
-- AP mode (Wi-Fi setup mode)
+2. AP mode (Wi-Fi setup mode)でESP32に接続
   - SSID: ESP32-Wake-Setup
   - Password: esp32setup
   - URL: http://192.168.4.1/ または http://esp32-wake.local/
+
+3. 入力する．メモっておくと良い
 
 | 入力項目 | 内容 |
 | - | - |
@@ -57,10 +59,48 @@ Firebase Console側の作成から `/wake/request` とルール設定までの�
 | Username (email) | YOUR_EMAIL |
 | Pass | YOUR_PASS |
 
-<details><summary>iPhone ショートカット.app</summary>
+4. Apple ショートカット.app からスリープ解除できる．
+<details><summary><strong> ショートカット.app 設定方法</strong></summary>
 
+本来は`URLの内容を取得(Get contents of)`のPATCHまたはPUTで，FireBaseのRealtimeDatabaseを`false`から`true`に書き換える．
+しかし，現時点(2026/05/07)で認証が通らないので，[Scriptable](https://apps.apple.com/jp/app/scriptable/id1405459188) で代替する．
+
+- ① Scriptable.app:
+    - アプリをインストール
+    - 以下のスクリプトを作成
+    - ```
+      const url = String(args.shortcutParameter || "").trim();
+
+      const req = new Request(url);
+      req.method = "PUT";
+      req.headers = { "Content-Type": "application/json" };
+      req.body = "true";
+
+      const body = await req.loadString();
+      Script.setShortcutOutput(body);
+      Script.complete();
+      ```
+  > やっていること:  <br>
+  > PUT `完成URL`  <br>
+  > Content-Type: `application/json`  <br>
+  > body: `true`  <br>
+
+- ② Shortcuts.app:
+  - ショートカットをダウンロードまたは作成
+    - ショートカットファイルは[こちら](./examples/minimal_firebase_wake/sleep_wake_sample.shortcut) <details><summary><strong>ショートカットの中身はこちら</strong></summary>
+      | ![sc1](fig/sc1.png) | ![sc2](fig/sc2.png) | ![sc3](fig/sc3.png) |
+      | - | - | - |
+      </details>
+  - `YOUR_API`, `YOUR_URL`, `YOUR_EMAIL`, `YOURL_PASS` を自分のモノに置き換える 
+  - Scriptable の  Run `FireBase` with  の部分を①で作成したコードにする
+  > やっていること  <br>
+  > AuthでidToken取得  <br>
+  > → Textで完成URLを作る  <br>
+  > → Scriptable Run Script の Parameter にTextを渡す
 
 </details>
+
+---
 
 ## Public API
 
