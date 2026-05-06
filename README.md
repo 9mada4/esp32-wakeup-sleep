@@ -39,8 +39,8 @@ BOOT押下でスリープ解除できるﾊｽﾞ
 `setup()` / `loop()` 側には、USB HID と Remote Wake の最低限の土台だけを残しています。
 
 ## [2] 動作確認できたらFireBase（minimal_firebase_wake.ino）
-FireBaseのリアルタイムデータベースを用いて，VPNなしで外出先からスリープ復帰可能
-
+FireBaseのリアルタイムデータベースを用いて，VPNなしで外出先からスリープ復帰可能  <br>
+ファイル > スケッチ例 > ESP32WakeCore > minimal を開きます。
 1. Firebase Console側の作成から `/wake/request` とルール設定までの手順は [FireBase 設定方法.md](docs/FireBase%20設定方法.md) を参照してください。
 
 2. AP mode (Wi-Fi setup mode)でESP32に接続
