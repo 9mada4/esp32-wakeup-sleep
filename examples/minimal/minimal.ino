@@ -52,6 +52,7 @@ static void configureUsbForWake() {
   USB.usbAttributes((uint8_t)WAKE_USB_REMOTE_WAKE_ATTR);
   USB.usbPower(100);
   USB.productName("ESP32WakeCore");
+  USB.serialNumber("ESP32WAKE001");
 
   (void)sUsbHid;
   sUsbMouse.begin();
