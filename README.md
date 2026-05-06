@@ -40,10 +40,13 @@ ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
 
 ## 動作確認できたらFireBase（minimal_firebase_wake.ino）
 FireBaseのリアルタイムデータベースを用いて，VPNなしで外出先からスリープ復帰可能
+
+Firebase Console側の作成から `/wake/request` とルール設定までの手順は [FireBase 設定方法.md](docs/FireBase%20設定方法.md) を参照してください。
+
 - AP mode (Wi-Fi setup mode)
-  - SSID: ESP32-WiFi-Setup
+  - SSID: ESP32-Wake-Setup
   - Password: esp32setup
-  - URL: http://192.168.4.1/
+  - URL: http://192.168.4.1/ または http://esp32-wake.local/
 
 | 入力項目 | 内容 |
 | - | - |
