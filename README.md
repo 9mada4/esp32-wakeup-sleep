@@ -56,7 +56,11 @@ Firebase Console側の作成から `/wake/request` とルール設定までの�
 | FireBase URL | YOUR_URL |
 | Username (email) | YOUR_EMAIL |
 | Pass | YOUR_PASS |
-  
+
+<details><summary>iPhone ショートカット.app</summary>
+
+
+</details>
 
 ## Public API
 
