@@ -79,7 +79,7 @@ static const char* kSetupApSsid = "ESP32-Wake-Setup";
 static const char* kSetupApPass = "esp32setup";
 static const char* kFixedHostName = "esp32-wake";
 static const uint32_t kWifiConnectTimeoutMs = 20000;
-static const uint32_t kFirebasePollIntervalMs = 1000;
+static const uint32_t kFirebasePollIntervalMs = 10000;
 
 struct WakeConfig {
   char wifi_ssid[33];
@@ -104,6 +104,8 @@ static bool s_mdnsStarted = false;
 static bool s_restartQueued = false;
 static uint32_t s_restartAtMs = 0;
 static uint32_t s_lastPollMs = 0;
+
+static bool ensureMdnsForPortal();
 
 static bool timeReached(uint32_t now, uint32_t due_ms) {
   return (int32_t)(now - due_ms) >= 0;
@@ -312,7 +314,7 @@ static void handleSetupSave() {
 }
 
 static bool ensureSetupApAndServer() {
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_AP);
   if (!WiFi.softAP(kSetupApSsid, kSetupApPass)) {
     WAKE_LOG_SERIAL.println("Failed to start setup AP");
     return false;
@@ -362,8 +364,8 @@ static bool ensureMdnsForPortal() {
 }
 
 static bool connectWifiSta(const WakeConfig& cfg) {
-  WiFi.mode(WIFI_AP_STA);
-  (void)WiFi.softAP(kSetupApSsid, kSetupApPass);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(true);
   WiFi.setAutoReconnect(true);
   WiFi.begin(cfg.wifi_ssid, cfg.wifi_password);
 
@@ -374,7 +376,6 @@ static bool connectWifiSta(const WakeConfig& cfg) {
 
   if (WiFi.status() == WL_CONNECTED) {
     WAKE_LOG_SERIAL.printf("Wi-Fi connected: %s\n", WiFi.localIP().toString().c_str());
-    s_mdnsStarted = false;
     return true;
   }
 
@@ -626,10 +627,6 @@ static void appSetup() {
     return;
   }
 
-  if (!ensureSetupApAndServer()) {
-    WAKE_LOG_SERIAL.println("Failed to keep setup AP available.");
-  }
-
   if (!connectWifiSta(s_config)) {
     WAKE_LOG_SERIAL.println("Wi-Fi unavailable. Entering config mode for safe standby.");
     startConfigMode();
@@ -637,8 +634,7 @@ static void appSetup() {
   }
 
   s_configMode = false;
-  (void)ensureMdnsForPortal();
-  WAKE_LOG_SERIAL.println("STA connected. Setup portal: http://esp32-wake.local/");
+  WAKE_LOG_SERIAL.println("STA connected. Setup AP disabled.");
   s_lastPollMs = millis();
 #endif
 }
@@ -661,11 +657,6 @@ static void appLoop() {
   if (WiFi.status() != WL_CONNECTED) {
     return;
   }
-  (void)ensureMdnsForPortal();
-  if (s_mdnsStarted) {
-    MDNS.update();
-  }
-
   uint32_t now = millis();
   if (!timeReached(now, s_lastPollMs + kFirebasePollIntervalMs)) {
     return;
