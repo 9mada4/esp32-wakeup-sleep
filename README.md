@@ -23,7 +23,7 @@ ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
 14. Windows STARTボタンを右クリック＞デバイスマネージャー＞マウスとそのほかのポインティングデバイス＞HID準拠マウス＞プロパティ <details><summary>イベントのタイムスタンプを確認</summary> 書き込んだ時間になっているはずです． ![](fig/event.png) </details>
 14. `minimal.ino`は，BOOTボタンを押すとスリープから復帰します．
 
-## 配布 zip の中身
+## 配布 zip の中身(未更新)
 
 - `library.properties`
 - `src/wake_core.h`
