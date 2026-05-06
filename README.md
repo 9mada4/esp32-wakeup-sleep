@@ -13,12 +13,15 @@ ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
 4. 手動で展開する場合は、展開先を `Documents/Arduino/libraries/esp32-wakeup-sleep` にします。
 5. `ファイル > スケッチ例 > ESP32WakeCore > minimal` を開きます。
 6. `minimal.ino` の `appSetup() / appLoop() / appOnWakeButton()` を編集して使います。
-7. 使っているボードに変更（例：`Fri3d Badge 2024 (ESP32-S3-WROOM-1)`）
-8. USB-ModeをUSB-OTG(Tiny USB)に変更
-9. ボードマネージャー `esp32` (Arduinoじゃない方）
-10. 必要なライブラリは適宜インストール
-11. 書き込み
-12. スケッチ例は，BOOTボタンを押すとスリープから復帰します．
+7. PCとHIDを有線接続 <details><summary>OTGじゃない方です</summary> ![esp32](fig/esp32.png) </details>
+8. 使っているボードに変更（例：`Fri3d Badge 2024 (ESP32-S3-WROOM-1)`）
+9. USB-ModeをUSB-OTG(Tiny USB)に変更 <details><summary>設定はこちら</summary> ![ide-config](.//fig/config.png) </details>
+10. ボードマネージャー `esp32` (Arduinoじゃない方）
+11. 必要なライブラリは適宜インストール
+12. 書き込み
+13. OTGに接続
+14. Windows STARTボタンを右クリック＞デバイスマネージャー＞マウスとそのほかのポインティングデバイス＞HID準拠マウス＞プロパティ <details><summary>イベントのタイムスタンプを確認</summary> 書き込んだ時間になっているはずです． ![](fig/event.png) </details>
+14. `minimal.ino`は，BOOTボタンを押すとスリープから復帰します．
 
 ## 配布 zip の中身
 
@@ -35,7 +38,7 @@ ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
 
 `setup()` / `loop()` 側には、USB HID と Remote Wake の最低限の土台だけを残しています。
 
-## FireBase版(./examples/minimal_firebase_wake/minimal_firebase_wake.ino)
+## 動作確認できたらFireBase（minimal_firebase_wake.ino）
 
 - FireBaseのリアルタイムデータベースを用いて，VPNなしで外出先からスリープ復帰可能
 - FireBaseの設定方法はこちら．
