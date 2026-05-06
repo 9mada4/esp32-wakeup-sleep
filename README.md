@@ -59,7 +59,7 @@ FireBaseのリアルタイムデータベースを用いて，VPNなしで外出
 | Username (email) | YOUR_EMAIL |
 | Pass | YOUR_PASS |
 
-4. Apple ショートカット.app からスリープ解除できる．
+4. Appleの`ショートカット.app`からスリープ解除できる．
 <details><summary><strong> ショートカット.app 設定方法</strong></summary>
 
 本来は`URLの内容を取得(Get contents of)`のPATCHまたはPUTで，FireBaseのRealtimeDatabaseを`false`から`true`に書き換える．
@@ -99,6 +99,8 @@ FireBaseのリアルタイムデータベースを用いて，VPNなしで外出
   > → Scriptable Run Script の Parameter にTextを渡す
 
 </details>
+
+5. ショートカットを実行するとスリープ解除
 
 ---
 
