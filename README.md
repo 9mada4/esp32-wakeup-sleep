@@ -5,7 +5,7 @@ ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
   - USB-OTG(Tiny USB) があるボード
   - ESP32-S3-WROOM-1で動作確認済
 
-## Arduino IDE で使う（推奨）
+## [1] Arduino IDE で使う（推奨）
 
 1. リポジトリ直下の `esp32-wakeup-sleep-arduino-min.zip` をダウンロードします。
 2. Arduino IDE で `スケッチ > ライブラリをインクルード > .ZIP形式のライブラリをインストール` を選び、上の zip を指定します。
@@ -30,15 +30,15 @@ ESP32-S3 向けの USB Remote Wake 最小ライブラリです。
 - `src/wake_core.c`
 - `examples/minimal/minimal.ino`
 
-## まず触る場所（minimal.ino）
-
+## 最小構成（minimal.ino）
+BOOT押下でスリープ解除できるﾊｽﾞ
 - 起動時処理: `appSetup()`
 - 通常ループ: `appLoop()`
 - BOOT押下で wake 要求後の処理: `appOnWakeButton(bool wakeSent)`
 
 `setup()` / `loop()` 側には、USB HID と Remote Wake の最低限の土台だけを残しています。
 
-## 動作確認できたらFireBase（minimal_firebase_wake.ino）
+## [2] 動作確認できたらFireBase（minimal_firebase_wake.ino）
 FireBaseのリアルタイムデータベースを用いて，VPNなしで外出先からスリープ復帰可能
 
 1. Firebase Console側の作成から `/wake/request` とルール設定までの手順は [FireBase 設定方法.md](docs/FireBase%20設定方法.md) を参照してください。
